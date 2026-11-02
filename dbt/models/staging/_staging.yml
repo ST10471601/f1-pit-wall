@@ -1,0 +1,7 @@
+models:
+  - name: stg_sessions
+    description: Silver sessions with warehouse column names.
+  - name: stg_drivers
+    description: Silver drivers with the columns the models use.
+  - name: stg_laps
+    description: Silver laps with units in column names; mini-sector segments are left out.

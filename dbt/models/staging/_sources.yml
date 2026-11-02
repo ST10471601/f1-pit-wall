@@ -1,0 +1,11 @@
+sources:
+  - name: silver
+    description: Validated OpenF1 records, one Parquet file per dataset and session.
+    meta:
+      external_location: >-
+        read_parquet('{{ env_var('DBT_PITWALL_SILVER_DIR') }}/{name}/*/data.parquet',
+        hive_partitioning = true)
+    tables:
+      - name: sessions
+      - name: drivers
+      - name: laps
