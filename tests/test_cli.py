@@ -1,3 +1,4 @@
+import gzip
 import json
 import subprocess
 import sys
@@ -9,7 +10,7 @@ import pytest
 import responses
 
 from pitwall.cli import EXIT_FAILED, EXIT_OK, main
-from tests.conftest import OPENF1_URL, REPO_CONFIG
+from tests.conftest import FIXTURE_BRONZE, OPENF1_URL, REPO_CONFIG
 from tests.records import DRIVER, LAP, SESSION
 
 
@@ -41,20 +42,25 @@ def test_module_entry_point_runs() -> None:
     assert "--as-of" in result.stdout
 
 
-def test_run_session_ingests_the_race_into_bronze_ops_and_silver(
-    api: responses.RequestsMock, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+@pytest.mark.integration
+def test_run_session_takes_the_fixture_race_from_the_api_to_the_warehouse(
+    api: responses.RequestsMock,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    repo_dbt_project: None,
 ) -> None:
-    api.get(f"{OPENF1_URL}/sessions", json=[SESSION])
-    api.get(f"{OPENF1_URL}/drivers", json=[DRIVER])
-    api.get(f"{OPENF1_URL}/laps", json=[LAP, LAP | {"lap_number": 9}])
-    args = ["run", "--session", "9158", "--as-of", "2026-11-02T10:00+02:00"]
+    for endpoint in ("sessions", "drivers", "laps"):
+        packed = next((FIXTURE_BRONZE / endpoint).rglob("payload.json.gz"))
+        body = gzip.decompress(packed.read_bytes())
+        api.get(f"{OPENF1_URL}/{endpoint}", body=body, content_type="application/json")
+    args = ["run", "--session", "9181", "--as-of", "2026-11-02T10:00+02:00"]
 
     code = main(["--config", str(REPO_CONFIG), *args])
 
     assert code == EXIT_OK
     lines = _log_lines(capsys.readouterr().err)
     started = next(line for line in lines if line["message"] == "run started")
-    assert started["session_key"] == 9158
+    assert started["session_key"] == 9181
     assert started["as_of"] == "2026-11-02T08:00:00+00:00"
     assert lines[-1]["message"] == "run finished"
     run_ids = {line["run_id"] for line in lines}
@@ -62,16 +68,15 @@ def test_run_session_ingests_the_race_into_bronze_ops_and_silver(
     run_id = run_ids.pop()
     data = tmp_path / "data"
     for endpoint in ("sessions", "drivers", "laps"):
-        assert (data / "bronze" / endpoint / "session_key=9158" / f"run_id={run_id}").is_dir()
+        assert (data / "bronze" / endpoint / "session_key=9181" / f"run_id={run_id}").is_dir()
     with duckdb.connect(str(data / "ops.duckdb"), read_only=True) as ops:
-        rows = ops.execute("SELECT DISTINCT run_id, status FROM ingestion_log").fetchall()
-    assert rows == [(run_id, "ok")]
-    with duckdb.connect() as con:
-        silver = con.execute(
-            "SELECT count(*), any_value(run_id)"
-            f" FROM read_parquet('{(data / 'silver').as_posix()}/laps/*/data.parquet')"
-        ).fetchone()
-    assert silver == (2, run_id)
+        logged = ops.execute("SELECT DISTINCT run_id, status FROM ingestion_log").fetchall()
+    assert logged == [(run_id, "ok")]
+    with duckdb.connect(str(data / "warehouse.duckdb"), read_only=True) as warehouse:
+        laps = warehouse.execute("SELECT count(*), any_value(run_id) FROM fact_lap").fetchall()
+        drivers = warehouse.execute("SELECT count(*) FROM mart_driver_race_pace").fetchall()
+    assert laps == [(1286, run_id)]
+    assert drivers == [(20,)]
 
 
 def test_run_fails_when_a_payload_breaks_its_contract(

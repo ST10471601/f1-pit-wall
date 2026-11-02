@@ -1,0 +1,15 @@
+# `pitwall run` sets these variables from config/settings.yaml. There are no fallbacks, so
+# running dbt by hand needs them set too.
+pitwall:
+  target: local
+  outputs:
+    local:
+      type: duckdb
+      path: "{{ env_var('DBT_PITWALL_WAREHOUSE_PATH') }}"
+      # One model at a time: the warehouse file has a single writer.
+      threads: 1
+      settings:
+        threads: "{{ env_var('DBT_PITWALL_DUCKDB_THREADS') }}"
+        memory_limit: "{{ env_var('DBT_PITWALL_DUCKDB_MEMORY_LIMIT') }}"
+        temp_directory: "{{ env_var('DBT_PITWALL_TEMP_DIR') }}"
+        TimeZone: UTC

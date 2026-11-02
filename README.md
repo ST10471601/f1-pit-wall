@@ -5,9 +5,9 @@ from the [OpenF1 API](https://openf1.org), validates and models them with DuckDB
 serves race pace, tyre stint, pit stop and teammate analysis in Streamlit.
 
 > **Status:** Phase 1 in progress. `pitwall run --session KEY` ingests one race's sessions,
-> drivers and laps into bronze, logs each fetch in `ops.duckdb` and validates them into silver
-> Parquet. dbt and the dashboard come next. `run` without `--session`, and `release`, still
-> exit with an error.
+> drivers and laps into bronze, logs each fetch in `ops.duckdb`, validates them into silver
+> Parquet and builds the dbt models, including race pace per driver, in `warehouse.duckdb`.
+> The dashboard comes next. `run` without `--session`, and `release`, still exit with an error.
 
 ## Architecture
 
@@ -38,7 +38,7 @@ uv run pitwall --help
 
 ```powershell
 uv run pitwall run                                # process race sessions that are due
-uv run pitwall run --session 9158                 # process one race session
+uv run pitwall run --session 9165                 # process one race (Singapore 2023)
 uv run pitwall run --as-of 2026-11-02T08:00:00Z   # fix the logical run time for reruns
 uv run pitwall release                            # publish the serving snapshot
 ```
@@ -72,8 +72,8 @@ uv run poe test-unit   # quick unit tests
 ```text
 config/          settings.yaml
 src/pitwall/     cli, config, logging; ingestion, validation, transform, orchestration
-dbt/             dbt project
-tests/
+dbt/             dbt project: staging, gold models, marts and their tests
+tests/           pytest suite; fixtures/ holds the Mexico City 2023 race as bronze
 docs/            architecture, data model; adr/ for decision records
 data/            pipeline output (gitignored)
 ```

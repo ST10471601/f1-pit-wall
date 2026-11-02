@@ -1,0 +1,28 @@
+models:
+  - name: mart_driver_race_pace
+    description: >-
+      One row per driver per race: laps, clean laps, race pace and fastest lap. Each metric
+      says whether it is official (OpenF1 values as given) or derived (computed here).
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [session_key, driver_number]
+    columns:
+      - name: laps
+        description: Laps the driver started.
+        meta: {definition_source: official}
+      - name: clean_laps
+        description: Laps that passed every clean-lap rule.
+        meta: {definition_source: derived}
+      - name: clean_lap_share
+        description: clean_laps / laps.
+        meta: {definition_source: derived}
+      - name: race_pace_seconds
+        description: Median lap time over clean laps.
+        meta: {definition_source: derived}
+      - name: race_pace_gap_seconds
+        description: Race pace minus the best race pace in the session.
+        meta: {definition_source: derived}
+      - name: fastest_lap_seconds
+        description: Minimum lap time over all laps, clean or not.
+        meta: {definition_source: official}

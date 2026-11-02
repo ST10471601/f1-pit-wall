@@ -1,0 +1,31 @@
+name: pitwall
+version: "0.1.0"
+config-version: 2
+profile: pitwall
+require-dbt-version: [">=1.11.0", "<1.12.0"]
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+
+flags:
+  send_anonymous_usage_stats: false
+
+vars:
+  # Clean-lap rule 6: a lap slower than this multiple of the driver's median clean lap is an
+  # outlier. A heuristic borrowed from the 107% qualifying rule.
+  outlier_pct: 1.07
+
+models:
+  pitwall:
+    staging:
+      +materialized: view
+    # A run rebuilds only its session: delete that session's rows, insert them again.
+    gold:
+      +materialized: incremental
+      +incremental_strategy: delete+insert
+      +unique_key: session_key
+    marts:
+      +materialized: incremental
+      +incremental_strategy: delete+insert
+      +unique_key: session_key

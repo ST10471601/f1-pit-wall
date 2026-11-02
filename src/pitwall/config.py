@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     )
 
     data_dir: Path
+    dbt_project_dir: Path
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"]
     api: ApiSettings
     run: RunSettings

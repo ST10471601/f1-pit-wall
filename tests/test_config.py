@@ -19,6 +19,7 @@ def test_repo_config_loads_with_derived_paths() -> None:
     assert settings.ops_db == Path("data/ops.duckdb")
     assert settings.warehouse_db == Path("data/warehouse.duckdb")
     assert settings.duckdb_temp_dir == Path("data/tmp")
+    assert settings.dbt_project_dir == Path("dbt")
     assert settings.discord_webhook_url is None
 
 

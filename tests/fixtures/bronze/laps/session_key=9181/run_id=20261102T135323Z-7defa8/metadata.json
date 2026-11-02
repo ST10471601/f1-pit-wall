@@ -1,0 +1,16 @@
+{
+  "run_id": "20261102T135323Z-7defa8",
+  "endpoint": "laps",
+  "session_key": 9181,
+  "params": {
+    "session_key": 9181
+  },
+  "url": "https://api.openf1.org/v1/laps?session_key=9181",
+  "http_status": 200,
+  "status": "ok",
+  "record_count": 1286,
+  "payload_sha256": "dc643c488f5d6f857adf1bd457c82991bec1d6c297167f345422831500bd791c",
+  "payload_bytes": 594263,
+  "attempts": 1,
+  "ingested_at": "2026-11-02T13:53:31.477282Z"
+}

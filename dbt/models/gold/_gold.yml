@@ -1,0 +1,139 @@
+models:
+  - name: dim_session
+    description: One row per race session.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [session_key]
+    columns:
+      - name: session_key
+        data_tests: [not_null]
+      - name: session_name
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [Race]
+      - name: started_at
+        description: Scheduled start, UTC.
+      - name: ended_at
+        description: Scheduled end, UTC.
+      - name: utc_offset
+        description: Local time offset at the circuit as HH:MM:SS, negative with a leading -.
+      - name: run_id
+        description: Pipeline run whose bronze payload this row came from.
+
+  - name: dim_driver_session
+    description: >-
+      One row per driver entered in a session. Team name and colour are as they were for
+      that session; there is no separate team dimension.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [session_key, driver_number]
+    columns:
+      - name: session_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_session')
+                field: session_key
+      - name: driver_number
+        data_tests: [not_null]
+      - name: name_acronym
+        data_tests: [not_null]
+      - name: team_name
+        description: Missing for some drivers in OpenF1 (e.g. driver 50 at Mexico City 2026).
+        data_tests:
+          - not_null:
+              config:
+                severity: warn
+      - name: team_colour
+        description: Team colour as RRGGBB, without a leading #.
+
+  - name: fact_lap
+    description: >-
+      One row per lap a driver started, with the clean-lap classification. Rules apply in
+      order and the first match sets exclusion_reason: first_lap (lap 1), no_lap_time,
+      pit_out_lap, then outlier (slower than outlier_pct times the driver's median of the
+      laps that passed the earlier rules). Rules for in-laps and neutralisations come later.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [session_key, driver_number, lap_number]
+    columns:
+      - name: session_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_session')
+                field: session_key
+      - name: driver_number
+        data_tests: [not_null]
+      - name: lap_number
+        data_tests: [not_null]
+      - name: lap_started_at
+        description: Approximate lap start, UTC.
+      - name: lap_seconds
+        description: Lap time in seconds as OpenF1 reports it. Null when not timed.
+      - name: is_clean_lap
+        description: True when no exclusion rule matched.
+        data_tests: [not_null]
+      - name: exclusion_reason
+        description: The first rule that excluded the lap; null for clean laps.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [first_lap, no_lap_time, pit_out_lap, outlier]
+
+unit_tests:
+  - name: fact_lap_applies_the_first_matching_rule
+    model: fact_lap
+    overrides:
+      macros:
+        is_incremental: false
+    given:
+      - input: ref('stg_laps')
+        rows:
+          - {session_key: 1, driver_number: 4, lap_number: 1, lap_seconds: 130.0, is_pit_out_lap: true}
+          - {session_key: 1, driver_number: 4, lap_number: 2, lap_seconds: null, is_pit_out_lap: true}
+          - {session_key: 1, driver_number: 4, lap_number: 3, lap_seconds: 125.0, is_pit_out_lap: true}
+          - {session_key: 1, driver_number: 4, lap_number: 4, lap_seconds: 90.0, is_pit_out_lap: false}
+          - {session_key: 1, driver_number: 4, lap_number: 5, lap_seconds: 91.0, is_pit_out_lap: false}
+          - {session_key: 1, driver_number: 4, lap_number: 6, lap_seconds: 92.0, is_pit_out_lap: false}
+          - {session_key: 1, driver_number: 4, lap_number: 7, lap_seconds: 98.4, is_pit_out_lap: false}
+          - {session_key: 1, driver_number: 4, lap_number: 8, lap_seconds: 120.0, is_pit_out_lap: false}
+    # Laps 4-8 pass rules 1-3; their median is 92.0, so the outlier limit is 98.44.
+    expect:
+      rows:
+        - {lap_number: 1, is_clean_lap: false, exclusion_reason: first_lap}
+        - {lap_number: 2, is_clean_lap: false, exclusion_reason: no_lap_time}
+        - {lap_number: 3, is_clean_lap: false, exclusion_reason: pit_out_lap}
+        - {lap_number: 4, is_clean_lap: true, exclusion_reason: null}
+        - {lap_number: 5, is_clean_lap: true, exclusion_reason: null}
+        - {lap_number: 6, is_clean_lap: true, exclusion_reason: null}
+        - {lap_number: 7, is_clean_lap: true, exclusion_reason: null}
+        - {lap_number: 8, is_clean_lap: false, exclusion_reason: outlier}
+
+  - name: fact_lap_outliers_use_each_drivers_own_median
+    model: fact_lap
+    overrides:
+      macros:
+        is_incremental: false
+    given:
+      - input: ref('stg_laps')
+        rows:
+          - {session_key: 1, driver_number: 4, lap_number: 2, lap_seconds: 80.0, is_pit_out_lap: false}
+          - {session_key: 1, driver_number: 4, lap_number: 3, lap_seconds: 80.0, is_pit_out_lap: false}
+          - {session_key: 1, driver_number: 4, lap_number: 4, lap_seconds: 90.0, is_pit_out_lap: false}
+          - {session_key: 1, driver_number: 22, lap_number: 2, lap_seconds: 90.0, is_pit_out_lap: false}
+          - {session_key: 1, driver_number: 22, lap_number: 3, lap_seconds: 90.0, is_pit_out_lap: false}
+    # 90.0 is more than 107% of driver 4's 80.0 median, but it is driver 22's normal pace.
+    expect:
+      rows:
+        - {driver_number: 4, lap_number: 2, exclusion_reason: null}
+        - {driver_number: 4, lap_number: 3, exclusion_reason: null}
+        - {driver_number: 4, lap_number: 4, exclusion_reason: outlier}
+        - {driver_number: 22, lap_number: 2, exclusion_reason: null}
+        - {driver_number: 22, lap_number: 3, exclusion_reason: null}
