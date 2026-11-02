@@ -1,7 +1,6 @@
 # Data model
 
-What each layer stores, at what grain. Timestamps are UTC; columns ending in `_at` are
-timezone-aware. How the layers are produced is in [architecture.md](architecture.md).
+What each layer stores, at what grain. Timestamps are timezone-aware and in UTC. How the layers are produced is in [architecture.md](architecture.md).
 
 ## Bronze
 
@@ -36,6 +35,66 @@ data/bronze/{endpoint}/session_key={session_key}/run_id={run_id}/
 | `payload_bytes` | int | Size of `payload.json` |
 | `attempts` | int | HTTP attempts, including retries |
 | `ingested_at` | timestamp | When the response was received |
+
+## Silver
+
+Validated, typed records, one Parquet file (zstd) per dataset and session:
+
+```text
+data/silver/{dataset}/session_key={session_key}/data.parquet
+```
+
+- **Grain:** one row per OpenF1 record, as received. Deduplication on a declared key comes in
+  Phase 3.
+- **Contract:** the Pydantic models in `validation/schemas.py`; the Parquet schema is derived
+  from them, so the two cannot drift apart. Types are strict and timestamps are UTC.
+- **Lineage:** every row also has `run_id` (VARCHAR) and `ingested_at` (TIMESTAMPTZ) of the
+  bronze payload it came from.
+- **Empty results** give a zero-row file with the full schema, so readers never see a stale
+  partition or a missing column.
+
+Columns are listed in file order. "Null" means the field may be null or missing in OpenF1.
+
+### sessions
+
+| Column | Type | Null |
+|---|---|---|
+| `session_key`, `meeting_key` | BIGINT | no |
+| `session_name` (`Race`, `Sprint`, ...), `session_type` | VARCHAR | no |
+| `year` | BIGINT | no |
+| `date_start`, `date_end` | TIMESTAMPTZ | no |
+| `gmt_offset` (local offset as `HH:MM:SS`, `-` when negative) | VARCHAR | no |
+| `is_cancelled` | BOOLEAN | no |
+| `circuit_key` | BIGINT | no |
+| `circuit_short_name` | VARCHAR | no |
+| `country_key` | BIGINT | no |
+| `country_code`, `country_name`, `location` | VARCHAR | no |
+
+### drivers
+
+| Column | Type | Null |
+|---|---|---|
+| `session_key`, `meeting_key`, `driver_number` | BIGINT | no |
+| `name_acronym` (e.g. `VER`) | VARCHAR | no |
+| `broadcast_name`, `full_name`, `first_name`, `last_name` | VARCHAR | yes |
+| `team_name` | VARCHAR | yes |
+| `team_colour` (`RRGGBB`, no `#`) | VARCHAR | yes |
+| `headshot_url` | VARCHAR | yes |
+
+`country_code` is not kept: OpenF1 deprecated it and removes it after the 2026 season.
+
+### laps
+
+| Column | Type | Null |
+|---|---|---|
+| `session_key`, `meeting_key`, `driver_number`, `lap_number` | BIGINT | no |
+| `date_start` (approximate) | TIMESTAMPTZ | yes |
+| `lap_duration`, `duration_sector_1`, `duration_sector_2`, `duration_sector_3` (seconds) | DOUBLE | yes |
+| `i1_speed`, `i2_speed`, `st_speed` (km/h) | BIGINT | yes |
+| `is_pit_out_lap` | BOOLEAN | no |
+| `segments_sector_1`, `segments_sector_2`, `segments_sector_3` | BIGINT[] | yes |
+
+OpenF1 notes that mini-sector segments are not available during races, so expect them null.
 
 ## ops.duckdb
 
