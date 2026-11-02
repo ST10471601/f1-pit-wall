@@ -10,13 +10,7 @@ import responses
 
 from pitwall.cli import EXIT_FAILED, EXIT_OK, main
 from tests.conftest import OPENF1_URL, REPO_CONFIG
-
-SESSION = {
-    "session_key": 9158,
-    "session_name": "Race",
-    "date_end": "2023-09-17T14:00:00+00:00",
-    "is_cancelled": False,
-}
+from tests.records import DRIVER, LAP, SESSION
 
 
 def _log_lines(stderr: str) -> list[dict[str, Any]]:
@@ -47,12 +41,12 @@ def test_module_entry_point_runs() -> None:
     assert "--as-of" in result.stdout
 
 
-def test_run_session_ingests_the_race_into_bronze_and_ops(
+def test_run_session_ingests_the_race_into_bronze_ops_and_silver(
     api: responses.RequestsMock, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     api.get(f"{OPENF1_URL}/sessions", json=[SESSION])
-    api.get(f"{OPENF1_URL}/drivers", json=[{"driver_number": 55}])
-    api.get(f"{OPENF1_URL}/laps", json=[{"driver_number": 55, "lap_number": 1}])
+    api.get(f"{OPENF1_URL}/drivers", json=[DRIVER])
+    api.get(f"{OPENF1_URL}/laps", json=[LAP, LAP | {"lap_number": 9}])
     args = ["run", "--session", "9158", "--as-of", "2026-11-02T10:00+02:00"]
 
     code = main(["--config", str(REPO_CONFIG), *args])
@@ -72,6 +66,27 @@ def test_run_session_ingests_the_race_into_bronze_and_ops(
     with duckdb.connect(str(data / "ops.duckdb"), read_only=True) as ops:
         rows = ops.execute("SELECT DISTINCT run_id, status FROM ingestion_log").fetchall()
     assert rows == [(run_id, "ok")]
+    with duckdb.connect() as con:
+        silver = con.execute(
+            "SELECT count(*), any_value(run_id)"
+            f" FROM read_parquet('{(data / 'silver').as_posix()}/laps/*/data.parquet')"
+        ).fetchone()
+    assert silver == (2, run_id)
+
+
+def test_run_fails_when_a_payload_breaks_its_contract(
+    api: responses.RequestsMock, capsys: pytest.CaptureFixture[str]
+) -> None:
+    api.get(f"{OPENF1_URL}/sessions", json=[SESSION])
+    api.get(f"{OPENF1_URL}/drivers", json=[DRIVER])
+    api.get(f"{OPENF1_URL}/laps", json=[LAP | {"lap_number": "8"}])
+
+    code = main(["--config", str(REPO_CONFIG), "run", "--session", "9158"])
+
+    assert code == EXIT_FAILED
+    failed = _log_lines(capsys.readouterr().err)[-1]
+    assert failed["message"] == "run failed"
+    assert failed["error"].startswith("laps for session 9158: 1 problem(s)")
 
 
 def test_run_fails_when_the_session_is_not_a_race(
