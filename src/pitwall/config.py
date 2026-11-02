@@ -18,6 +18,8 @@ class ApiSettings(_Section):
     base_url: str
     timeout_seconds: float = Field(gt=0)
     max_retries: int = Field(ge=0)
+    retry_backoff_seconds: float = Field(gt=0)
+    retry_backoff_max_seconds: float = Field(gt=0)
     requests_per_second: int = Field(gt=0)
     requests_per_minute: int = Field(gt=0)
 

@@ -9,6 +9,9 @@ api:
   base_url: https://api.openf1.org/v1
   timeout_seconds: 30
   max_retries: 5
+  # Waits double after each failed attempt: 2, 4, 8, ... seconds, capped.
+  retry_backoff_seconds: 2
+  retry_backoff_max_seconds: 60
   # OpenF1 free tier limits
   requests_per_second: 3
   requests_per_minute: 30
