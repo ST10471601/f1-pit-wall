@@ -3,6 +3,7 @@
 # Relative paths resolve against the working directory (the repo root).
 
 data_dir: data
+dbt_project_dir: dbt
 log_level: INFO
 
 api:

@@ -73,3 +73,9 @@ def unpack_fixture(bronze_dir: Path) -> None:
         target.mkdir(parents=True, exist_ok=True)
         (target / "payload.json").write_bytes(gzip.decompress(packed.read_bytes()))
         shutil.copyfile(packed.with_name("metadata.json"), target / "metadata.json")
+
+
+@pytest.fixture
+def repo_dbt_project(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Point settings at the repo's dbt project; tests run from a temporary directory."""
+    monkeypatch.setenv("PITWALL_DBT_PROJECT_DIR", str(REPO_ROOT / "dbt"))
