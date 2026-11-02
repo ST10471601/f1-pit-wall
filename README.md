@@ -4,7 +4,9 @@ A batch data pipeline and dashboard for Formula 1 race data. PitWall ingests rac
 from the [OpenF1 API](https://openf1.org), validates and models them with DuckDB and dbt, and
 serves race pace, tyre stint, pit stop and teammate analysis in Streamlit.
 
-> **Status:** foundations. The `run` and `release` commands are stubs that exit with an error.
+> **Status:** Phase 1 in progress. `pitwall run --session KEY` ingests one race's sessions,
+> drivers and laps into bronze and logs each fetch in `ops.duckdb`. Silver, dbt and the
+> dashboard come next. `run` without `--session`, and `release`, still exit with an error.
 
 ## Architecture
 
@@ -16,6 +18,8 @@ OpenF1 API -> bronze (raw JSON, immutable) -> silver (validated Parquet) -> dbt 
 - **Scope (v1):** Grand Prix race sessions from 2023 (where OpenF1 history starts) to the
   current season. Sprints are excluded.
 - **Runs:** weekly batch, local-first, on Windows without Docker.
+
+More detail: [architecture](docs/architecture.md) and [data model](docs/data-model.md).
 
 ## Setup (Windows)
 
@@ -33,7 +37,7 @@ uv run pitwall --help
 
 ```powershell
 uv run pitwall run                                # process race sessions that are due
-uv run pitwall run --session 9158                 # process one session
+uv run pitwall run --session 9158                 # process one race session
 uv run pitwall run --as-of 2026-11-02T08:00:00Z   # fix the logical run time for reruns
 uv run pitwall release                            # publish the serving snapshot
 ```
@@ -69,7 +73,7 @@ config/          settings.yaml
 src/pitwall/     cli, config, logging; ingestion, validation, transform, orchestration
 dbt/             dbt project
 tests/
-docs/adr/        architecture decision records
+docs/            architecture, data model; adr/ for decision records
 data/            pipeline output (gitignored)
 ```
 

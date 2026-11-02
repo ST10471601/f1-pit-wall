@@ -7,38 +7,21 @@ import requests
 import responses
 from responses import matchers
 
-from pitwall.config import ApiSettings
 from pitwall.ingestion.openf1 import (
     OpenF1Client,
     OpenF1HTTPError,
     OpenF1PayloadError,
     OpenF1UnavailableError,
 )
-from tests.conftest import FakeClock
+from tests.conftest import API_SETTINGS, OPENF1_URL, FakeClock
 
-BASE_URL = "https://api.openf1.org/v1"
-SESSIONS_URL = f"{BASE_URL}/sessions"
+SESSIONS_URL = f"{OPENF1_URL}/sessions"
 NO_RESULTS = {"detail": "No results found."}
-SETTINGS = ApiSettings(
-    base_url=BASE_URL,
-    timeout_seconds=5,
-    max_retries=3,
-    retry_backoff_seconds=2,
-    retry_backoff_max_seconds=5,
-    requests_per_second=100,
-    requests_per_minute=1000,
-)
-
-
-@pytest.fixture
-def api() -> Iterator[responses.RequestsMock]:
-    with responses.RequestsMock() as mock:
-        yield mock
 
 
 @pytest.fixture
 def client(clock: FakeClock) -> Iterator[OpenF1Client]:
-    with OpenF1Client(SETTINGS, clock=clock, sleep=clock.sleep) as openf1:
+    with OpenF1Client(API_SETTINGS, clock=clock, sleep=clock.sleep) as openf1:
         yield openf1
 
 
@@ -193,7 +176,7 @@ def test_retries_also_wait_for_the_configured_rate_limit(
 ) -> None:
     api.get(SESSIONS_URL, status=500)
     api.get(SESSIONS_URL, json=[])
-    one_per_minute = SETTINGS.model_copy(update={"requests_per_minute": 1})
+    one_per_minute = API_SETTINGS.model_copy(update={"requests_per_minute": 1})
 
     with OpenF1Client(one_per_minute, clock=clock, sleep=clock.sleep) as client:
         client.get("sessions", {})

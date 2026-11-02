@@ -1,13 +1,22 @@
 import argparse
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from importlib.metadata import version
 from pathlib import Path
 
 from pydantic import ValidationError
 
-from pitwall.config import CONFIG_FILE_ENV_VAR, DEFAULT_CONFIG_FILE, ConfigError, load_settings
+from pitwall.config import (
+    CONFIG_FILE_ENV_VAR,
+    DEFAULT_CONFIG_FILE,
+    ConfigError,
+    Settings,
+    load_settings,
+)
+from pitwall.ingestion.openf1 import OpenF1Client, OpenF1Error
+from pitwall.ingestion.race import IngestionRun, SessionNotEligibleError, ingest_race
 from pitwall.log import configure_logging, run_context
+from pitwall.ops import connect_ops
 from pitwall.run_id import new_run_id
 
 log = logging.getLogger(__name__)
@@ -62,10 +71,41 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _run(session_key: int | None, as_of: datetime) -> int:
+def _utc_now() -> datetime:
+    """The wall clock. Read only here; everything downstream gets times or this function."""
+    return datetime.now(UTC)
+
+
+def _run(settings: Settings, run_id: str, session_key: int | None, as_of: datetime) -> int:
     log.info("run started", extra={"session_key": session_key, "as_of": as_of.isoformat()})
-    log.error("run is not implemented yet")
-    return EXIT_FAILED
+    if session_key is None:
+        log.error("run selection is not implemented yet; pass --session KEY")
+        return EXIT_FAILED
+
+    with (
+        OpenF1Client(settings.api) as client,
+        connect_ops(settings.ops_db, settings.duckdb) as ops,
+    ):
+        run = IngestionRun(
+            run_id=run_id,
+            client=client,
+            ops=ops,
+            bronze_dir=settings.bronze_dir,
+            now=_utc_now,
+        )
+        try:
+            ingest_race(
+                run,
+                session_key,
+                as_of=as_of,
+                settle_delay=timedelta(hours=settings.run.settle_delay_hours),
+            )
+        except (OpenF1Error, SessionNotEligibleError) as exc:
+            log.error("run failed", extra={"error": str(exc)})
+            return EXIT_FAILED
+
+    log.info("run finished")
+    return EXIT_OK
 
 
 def _release() -> int:
@@ -83,10 +123,10 @@ def main(argv: list[str] | None = None) -> int:
         parser.exit(EXIT_USAGE, f"pitwall: invalid configuration\n{exc}\n")
 
     configure_logging(settings.log_level)
-    # The only place the wall clock is read; everything downstream takes these as inputs.
-    started_at = datetime.now(UTC)
+    started_at = _utc_now()
+    run_id = new_run_id(started_at)
 
-    with run_context(new_run_id(started_at)):
+    with run_context(run_id):
         if args.command == "run":
-            return _run(args.session, args.as_of or started_at)
+            return _run(settings, run_id, args.session, args.as_of or started_at)
         return _release()
