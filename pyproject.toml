@@ -5,6 +5,8 @@ description = "Batch data pipeline and dashboard for Formula 1 race data from Op
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "dbt-core>=1.11.16,<1.12",
+    "dbt-duckdb>=1.11.1",
     "duckdb>=2.0",
     "pyarrow>=26.0.0",
     "pydantic>=2.14",
@@ -30,6 +32,12 @@ dev = [
     "types-requests>=2.33.0.20261030",
     "tzdata>=2026.6",
 ]
+
+[tool.uv]
+# dbt-core 1.11 pins pathspec<0.13 while mypy 2 needs pathspec>=1.0. dbt-core 1.12 accepts
+# 1.0, so dbt works with it; 1.12 itself is avoided because it downloads a 63 MB parser from
+# GitHub at install time. Drop this when upgrading dbt-core.
+override-dependencies = ["pathspec>=1.0,<1.1"]
 
 [build-system]
 requires = ["uv_build>=0.12,<0.13"]
