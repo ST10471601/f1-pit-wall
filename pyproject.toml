@@ -28,6 +28,7 @@ dev = [
     "ruff>=0.14",
     "types-pyyaml>=6.0.12.20261030",
     "types-requests>=2.33.0.20261030",
+    "tzdata>=2026.6",
 ]
 
 [build-system]
