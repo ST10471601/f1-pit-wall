@@ -10,8 +10,8 @@ OpenF1 API -> ingestion -> bronze (raw JSON) -> silver (Parquet) -> dbt on DuckD
                   \-> ops.duckdb (ingestion_log)
 ```
 
-Built so far: ingestion into bronze and `ops.ingestion_log`. Silver, dbt, serving and the
-dashboard follow in Phase 1.
+Built so far: ingestion into bronze and `ops.ingestion_log`, then validation into silver.
+dbt, serving and the dashboard follow in Phase 1.
 
 ## Components
 
@@ -24,6 +24,9 @@ dashboard follow in Phase 1.
 | `ingestion/bronze.py` | Writes one response as `payload.json` plus `metadata.json`. |
 | `ingestion/race.py` | Ingests one race: checks the session record, then fetches drivers and laps. |
 | `ops.py` | Opens `ops.duckdb` and writes `ingestion_log`. |
+| `validation/schemas.py` | Record contracts (Pydantic) and the Arrow schemas derived from them. |
+| `validation/silver.py` | Validates a run's bronze payload and replaces the silver partition. |
+| `orchestration/run.py` | Runs one session: ingestion, then silver. |
 
 ## Run flow
 
@@ -34,8 +37,10 @@ dashboard follow in Phase 1.
 3. The session must exist, be a `Race` (not a Sprint), not be cancelled, and have ended at
    least `settle_delay_hours` before `as_of`. Otherwise the run stops here.
 4. `drivers` and `laps` are fetched, stored and logged in turn.
-5. Exit code 0 on success. An API failure or an ineligible session exits 1 with the reason
-   logged; the failed fetch is also a row in `ingestion_log`.
+5. Each dataset is validated from this run's bronze payload and written to its silver
+   partition.
+6. Exit code 0 on success. An API failure, an ineligible session or a contract break exits 1
+   with the reason logged. A failed fetch is also a row in `ingestion_log`.
 
 `pitwall run` without `--session` exits 1 until run selection exists (Phase 2).
 
@@ -55,6 +60,15 @@ dashboard follow in Phase 1.
 - **Only registered endpoints.** OpenF1 answers an unknown endpoint with the same 404 as "no
   results", so a typo would look like an empty result. Endpoints are fixed in code
   (`ingestion/race.py`) until the Phase 2 registry in config.
+- **Strict contracts.** Silver accepts a record only if every field has the documented type:
+  numbers sent as strings and timestamps without an offset are rejected, not coerced.
+  Timestamps are converted to UTC. Fields OpenF1 adds are dropped until Phase 3 logs them as
+  schema drift. In Phase 1 one bad record fails its dataset and the run; Phase 3 routes bad
+  records to quarantine instead.
+- **Silver is overwritten per partition.** A run replaces the whole
+  `{dataset}/session_key=X/data.parquet` file, so rerunning a session gives the same result.
+  The file is written to `.tmp` and renamed into place, so readers see the old file or the new
+  one, and a failed validation leaves the old one untouched. Readers match `data.parquet` only.
 - **Single writer per DuckDB file.** Only pipeline Python writes `ops.duckdb`. Windows file
   locks make two writers fail, so each later database file also has exactly one writer.
 
@@ -63,6 +77,7 @@ dashboard follow in Phase 1.
 ```text
 data/                                   # PITWALL_DATA_DIR, gitignored
   bronze/{endpoint}/session_key=X/run_id=Y/{payload.json, metadata.json}
+  silver/{dataset}/session_key=X/data.parquet
   ops.duckdb                            # ingestion_log
-  silver/, warehouse.duckdb, serving/   # planned
+  warehouse.duckdb, serving/            # planned
 ```

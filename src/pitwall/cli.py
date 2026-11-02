@@ -1,6 +1,6 @@
 import argparse
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from importlib.metadata import version
 from pathlib import Path
 
@@ -13,11 +13,12 @@ from pitwall.config import (
     Settings,
     load_settings,
 )
-from pitwall.ingestion.openf1 import OpenF1Client, OpenF1Error
-from pitwall.ingestion.race import IngestionRun, SessionNotEligibleError, ingest_race
+from pitwall.ingestion.openf1 import OpenF1Error
+from pitwall.ingestion.race import SessionNotEligibleError
 from pitwall.log import configure_logging, run_context
-from pitwall.ops import connect_ops
+from pitwall.orchestration.run import run_session
 from pitwall.run_id import new_run_id
+from pitwall.validation.silver import SilverValidationError
 
 log = logging.getLogger(__name__)
 
@@ -82,27 +83,11 @@ def _run(settings: Settings, run_id: str, session_key: int | None, as_of: dateti
         log.error("run selection is not implemented yet; pass --session KEY")
         return EXIT_FAILED
 
-    with (
-        OpenF1Client(settings.api) as client,
-        connect_ops(settings.ops_db, settings.duckdb) as ops,
-    ):
-        run = IngestionRun(
-            run_id=run_id,
-            client=client,
-            ops=ops,
-            bronze_dir=settings.bronze_dir,
-            now=_utc_now,
-        )
-        try:
-            ingest_race(
-                run,
-                session_key,
-                as_of=as_of,
-                settle_delay=timedelta(hours=settings.run.settle_delay_hours),
-            )
-        except (OpenF1Error, SessionNotEligibleError) as exc:
-            log.error("run failed", extra={"error": str(exc)})
-            return EXIT_FAILED
+    try:
+        run_session(settings, run_id, session_key, as_of=as_of, now=_utc_now)
+    except (OpenF1Error, SessionNotEligibleError, SilverValidationError) as exc:
+        log.error("run failed", extra={"error": str(exc)})
+        return EXIT_FAILED
 
     log.info("run finished")
     return EXIT_OK

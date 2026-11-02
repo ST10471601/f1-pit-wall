@@ -5,8 +5,9 @@ from the [OpenF1 API](https://openf1.org), validates and models them with DuckDB
 serves race pace, tyre stint, pit stop and teammate analysis in Streamlit.
 
 > **Status:** Phase 1 in progress. `pitwall run --session KEY` ingests one race's sessions,
-> drivers and laps into bronze and logs each fetch in `ops.duckdb`. Silver, dbt and the
-> dashboard come next. `run` without `--session`, and `release`, still exit with an error.
+> drivers and laps into bronze, logs each fetch in `ops.duckdb` and validates them into silver
+> Parquet. dbt and the dashboard come next. `run` without `--session`, and `release`, still
+> exit with an error.
 
 ## Architecture
 
