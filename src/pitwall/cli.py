@@ -18,6 +18,7 @@ from pitwall.ingestion.race import SessionNotEligibleError
 from pitwall.log import configure_logging, run_context
 from pitwall.orchestration.run import run_session
 from pitwall.run_id import new_run_id
+from pitwall.transform.warehouse import WarehouseBuildError
 from pitwall.validation.silver import SilverValidationError
 
 log = logging.getLogger(__name__)
@@ -85,7 +86,12 @@ def _run(settings: Settings, run_id: str, session_key: int | None, as_of: dateti
 
     try:
         run_session(settings, run_id, session_key, as_of=as_of, now=_utc_now)
-    except (OpenF1Error, SessionNotEligibleError, SilverValidationError) as exc:
+    except (
+        OpenF1Error,
+        SessionNotEligibleError,
+        SilverValidationError,
+        WarehouseBuildError,
+    ) as exc:
         log.error("run failed", extra={"error": str(exc)})
         return EXIT_FAILED
 

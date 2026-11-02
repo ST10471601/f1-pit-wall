@@ -5,6 +5,7 @@ from pitwall.config import Settings
 from pitwall.ingestion.openf1 import OpenF1Client
 from pitwall.ingestion.race import IngestionRun, ingest_race
 from pitwall.ops import connect_ops
+from pitwall.transform.warehouse import build_warehouse
 from pitwall.validation.silver import DATASETS, build_silver
 
 
@@ -16,7 +17,7 @@ def run_session(
     as_of: datetime,
     now: Callable[[], datetime],
 ) -> None:
-    """Ingest one race session into bronze, then validate it into silver."""
+    """Ingest one race session into bronze, validate it into silver, then build gold with dbt."""
     with (
         OpenF1Client(settings.api) as client,
         connect_ops(settings.ops_db, settings.duckdb) as ops,
@@ -41,3 +42,4 @@ def run_session(
             bronze_dir=settings.bronze_dir,
             silver_dir=settings.silver_dir,
         )
+    build_warehouse(settings, run_id, session_key)
