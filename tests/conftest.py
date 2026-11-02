@@ -1,4 +1,6 @@
+import gzip
 import os
+import shutil
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -9,6 +11,11 @@ from pitwall.config import ApiSettings
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 REPO_CONFIG = REPO_ROOT / "config" / "settings.yaml"
+
+# Mexico City 2023 race: a VSC, a safety car and a red flag. Payloads are gzipped to stay small.
+FIXTURE_BRONZE = REPO_ROOT / "tests" / "fixtures" / "bronze"
+FIXTURE_SESSION_KEY = 9181
+FIXTURE_RUN_ID = "20261102T135323Z-7defa8"
 
 OPENF1_URL = "https://api.openf1.org/v1"
 # Small retry waits and loose rate limits; tests that need a real limit set their own.
@@ -57,3 +64,12 @@ def api() -> Iterator[responses.RequestsMock]:
     """Mocked HTTP; any request that isn't registered fails, as does any unused registration."""
     with responses.RequestsMock() as mock:
         yield mock
+
+
+def unpack_fixture(bronze_dir: Path) -> None:
+    """Copy the fixture race into a bronze directory as the pipeline wrote it."""
+    for packed in FIXTURE_BRONZE.rglob("payload.json.gz"):
+        target = bronze_dir / packed.parent.relative_to(FIXTURE_BRONZE)
+        target.mkdir(parents=True, exist_ok=True)
+        (target / "payload.json").write_bytes(gzip.decompress(packed.read_bytes()))
+        shutil.copyfile(packed.with_name("metadata.json"), target / "metadata.json")
