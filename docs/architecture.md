@@ -10,8 +10,8 @@ OpenF1 API -> ingestion -> bronze (raw JSON) -> silver (Parquet) -> dbt on DuckD
                   \-> ops.duckdb (ingestion_log)
 ```
 
-Built so far: ingestion into bronze and `ops.ingestion_log`, then validation into silver.
-dbt, serving and the dashboard follow in Phase 1.
+Built so far: ingestion into bronze and `ops.ingestion_log`, validation into silver, and the
+dbt models in `warehouse.duckdb`. Serving and the dashboard follow in Phase 1.
 
 ## Components
 
@@ -26,7 +26,9 @@ dbt, serving and the dashboard follow in Phase 1.
 | `ops.py` | Opens `ops.duckdb` and writes `ingestion_log`. |
 | `validation/schemas.py` | Record contracts (Pydantic) and the Arrow schemas derived from them. |
 | `validation/silver.py` | Validates a run's bronze payload and replaces the silver partition. |
-| `orchestration/run.py` | Runs one session: ingestion, then silver. |
+| `transform/warehouse.py` | Runs `dbt build` for one session in a separate process. |
+| `orchestration/run.py` | Runs one session: ingestion, silver, then dbt. |
+| `dbt/` | Staging views over silver, gold dimensions and facts, marts, and their tests. |
 
 ## Run flow
 
@@ -39,8 +41,11 @@ dbt, serving and the dashboard follow in Phase 1.
 4. `drivers` and `laps` are fetched, stored and logged in turn.
 5. Each dataset is validated from this run's bronze payload and written to its silver
    partition.
-6. Exit code 0 on success. An API failure, an ineligible session or a contract break exits 1
-   with the reason logged. A failed fetch is also a row in `ingestion_log`.
+6. `dbt build --vars '{session_key: KEY}'` rebuilds that session's rows in every gold model
+   and mart, then runs the unit and data tests.
+7. Exit code 0 on success. An API failure, an ineligible session, a contract break, or a dbt
+   model or `error` test failure exits 1 with the reason logged. A failed fetch is also a row
+   in `ingestion_log`; dbt's own output is in `data/dbt/logs/dbt.log`.
 
 `pitwall run` without `--session` exits 1 until run selection exists (Phase 2).
 
@@ -69,8 +74,16 @@ dbt, serving and the dashboard follow in Phase 1.
   `{dataset}/session_key=X/data.parquet` file, so rerunning a session gives the same result.
   The file is written to `.tmp` and renamed into place, so readers see the old file or the new
   one, and a failed validation leaves the old one untouched. Readers match `data.parquet` only.
-- **Single writer per DuckDB file.** Only pipeline Python writes `ops.duckdb`. Windows file
-  locks make two writers fail, so each later database file also has exactly one writer.
+- **Gold is rebuilt per session.** Gold models and marts are incremental with delete+insert
+  on `session_key`: a run deletes its session's rows and inserts them again, so a rerun gives
+  the same tables. A build without `session_key` rebuilds every session in silver.
+- **dbt gets its settings from the pipeline.** `pitwall run` passes paths and DuckDB limits
+  from `config/settings.yaml` as `DBT_PITWALL_*` environment variables, and `profiles.yml`
+  has no fallbacks, so there is one source of configuration. Model parameters such as
+  `outlier_pct` live in `dbt_project.yml` beside the logic they define.
+- **Single writer per DuckDB file.** Only pipeline Python writes `ops.duckdb`, and only dbt
+  writes `warehouse.duckdb`. Windows file locks make two writers fail. dbt runs in its own
+  process, so the warehouse file is closed when it exits.
 
 ## Storage layout
 
@@ -79,5 +92,7 @@ data/                                   # PITWALL_DATA_DIR, gitignored
   bronze/{endpoint}/session_key=X/run_id=Y/{payload.json, metadata.json}
   silver/{dataset}/session_key=X/data.parquet
   ops.duckdb                            # ingestion_log
-  warehouse.duckdb, serving/            # planned
+  warehouse.duckdb                      # dbt models
+  dbt/{target, logs}/                   # dbt artefacts and dbt.log
+  serving/                              # planned
 ```

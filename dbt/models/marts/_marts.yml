@@ -10,6 +10,7 @@ models:
     columns:
       - name: laps
         description: Laps the driver started.
+        meta: {definition_source: official}
       - name: clean_laps
         description: Laps that passed every clean-lap rule.
         meta: {definition_source: derived}
