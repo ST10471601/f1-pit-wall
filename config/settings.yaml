@@ -1,0 +1,26 @@
+# Pipeline configuration. Any value can be overridden with an environment variable:
+# PITWALL_<FIELD>, nested with "__", e.g. PITWALL_API__TIMEOUT_SECONDS=10.
+# Relative paths resolve against the working directory (the repo root).
+
+data_dir: data
+log_level: INFO
+
+api:
+  base_url: https://api.openf1.org/v1
+  timeout_seconds: 30
+  max_retries: 5
+  # OpenF1 free tier limits
+  requests_per_second: 3
+  requests_per_minute: 30
+
+run:
+  first_season: 2023
+  # Wait this long after a session ends before ingesting it.
+  settle_delay_hours: 6
+  # Re-ingest sessions that ended within this window to pick up penalties and data fixes.
+  reprocess_window_days: 14
+  serving_snapshots_kept: 3
+
+duckdb:
+  threads: 2
+  memory_limit: 1.5GB

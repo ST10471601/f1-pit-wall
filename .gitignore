@@ -1,0 +1,31 @@
+build-plan.md
+
+# Pipeline data and local databases
+data/
+*.duckdb
+*.duckdb.wal
+*.bak
+
+# Secrets
+.env
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+
+# dbt
+dbt/target/
+dbt/logs/
+dbt/dbt_packages/
+dbt/.user.yml
+
+# Editors and OS
+.vscode/
+.idea/
+Thumbs.db
